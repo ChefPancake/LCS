@@ -1,31 +1,5 @@
 ﻿namespace LCS;
 
-public struct GameState {
-    public PlayerState Player1;
-    public PlayerState Player2;
-}
-
-public struct PlayerState {
-    public float XPos;
-    public float YPos;
-    public float XVel;
-    public float YVel;
-
-    public override readonly string ToString() =>
-        $"pos: [{XPos}, {YPos}]; vel: [{XVel}, {YVel}]";
-}
-
-public struct PlayerUpdateVelEvent {
-    public float Timestamp;
-    public int Id;
-    public float NewXVel;
-    public float NewYVel;
-}
-public struct EventId {
-    public int ChannelId;
-    public long Id;
-}
-
 public class StateChain<T> where T: struct {
 
     private struct ChainLink {
@@ -127,23 +101,5 @@ public class StateChain<T> where T: struct {
             index = link.NextItemIndex;
         }
         return (prevLinkIndex, index);
-    }
-}
-
-public interface IStateUpdate<T> where T: struct{
-    void UpdateState(ref T player, in T diff, float delTime);
-}
-
-public class GameStateUpdater : IStateUpdate<GameState> {
-    public void UpdateState(ref GameState state, in GameState diff, float delTime) {
-        UpdatePlayerState(ref state.Player1, in diff.Player1, delTime);
-        UpdatePlayerState(ref state.Player2, in diff.Player2, delTime);
-    }
-
-    private void UpdatePlayerState(ref PlayerState player, in PlayerState diff, float delTime) {
-        player.XPos += diff.XPos + player.XVel * delTime;
-        player.YPos += diff.YPos + player.YVel * delTime;
-        player.XVel += diff.XVel;
-        player.YVel += diff.YVel;
     }
 }
