@@ -1,8 +1,8 @@
 ﻿namespace LCS;
 
 public class StateChain<T> where T: struct {
-
     private struct ChainLink {
+        public EventId Id;
         public float Timestamp;
         public int? NextItemIndex;
         public T Item;
@@ -24,13 +24,18 @@ public class StateChain<T> where T: struct {
 
     public StateChain(T initialState, float timestamp) {
         _chain = new ChainLink[STATE_CHAIN_MAX_LENGTH];
-        _chain[0] = new() { Timestamp = timestamp, Item = initialState };
+        _chain[0] = new() { 
+            Id = new EventId(), 
+            Timestamp = timestamp, 
+            Item = initialState
+        };
         _chainRootIndex = 0;
         _nextLinkIndex = 1;
     }
 
-    public void Add(T newState, float timestamp) {
+    public void Add(T newState, float timestamp, EventId eventId) {
         var link = new ChainLink() {
+            Id = eventId,
             Timestamp = timestamp,
             Item = newState
         };
@@ -42,8 +47,14 @@ public class StateChain<T> where T: struct {
         };
     }
 
-    public void Reset(T newRoot, float timestamp) {
+    public void Reset(T newRoot, float timestamp, EventId eventId, EventId includeEventsFrom, IStateUpdate<T> updater) {
+        foreach (var link in EnumerateLinks()
+                .Where(x => x.Id.ChannelId == includeEventsFrom.ChannelId 
+                    && x.Id.Id >= includeEventsFrom.Id)) {
+            updater.UpdateState(ref newRoot, in link.Item, timestamp - link.Timestamp);
+        }
         _chain[_chainRootIndex] = new ChainLink() {
+            Id = eventId,
             Timestamp = timestamp,
             Item = newRoot
         };

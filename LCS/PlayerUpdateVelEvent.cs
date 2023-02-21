@@ -2,7 +2,7 @@
 
 public struct PlayerUpdateVelEvent {
     public float Timestamp;
-    public int Id;
-    public float NewXVel;
-    public float NewYVel;
+    public EventId Id;
+    public float XDiff;
+    public float YDiff;
 }
