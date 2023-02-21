@@ -2,6 +2,7 @@
 
 public class GameStateUpdater : IStateUpdate<GameState> {
     public void UpdateState(ref GameState state, in GameState diff, float delTime) {
+        //Stick whatever game logic is needed to validate server state based on these diffs
         UpdatePlayerState(ref state.Player1, in diff.Player1, delTime);
         UpdatePlayerState(ref state.Player2, in diff.Player2, delTime);
     }

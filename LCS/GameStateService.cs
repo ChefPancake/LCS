@@ -11,35 +11,23 @@ public class GameStateService {
     };
 
     private readonly StateChain<GameState> _stateChain;
-    private readonly IStateUpdate<GameState> _updater;
     
-
-
     private readonly Dictionary<int, long> _lastSeenEventIds;
-    private readonly HashSet<EventId> _missingEventIds;
 
     private readonly int _ownerChannelId;
-    private long _lastOwnedEventId;
 
-    public GameStateService(StateChain<GameState> chain, IStateUpdate<GameState> updater, int ownerChannelId) {
+    public GameStateService(StateChain<GameState> chain, int ownerChannelId) {
         _stateChain = chain;
-        _updater = updater;
         _ownerChannelId = ownerChannelId;
-        _missingEventIds = new();
-        _lastSeenEventIds = CHANNELS.ToDictionary(x=> x, x => -1L);
+        _lastSeenEventIds = CHANNELS.ToDictionary(x => x, x => -1L);
     }
 
     public void HandlePlayerUpdateVelEvent(in PlayerUpdateVelEvent updateEvent) {
-        if (updateEvent.Id.ChannelId == _ownerChannelId) {
-            _lastOwnedEventId = updateEvent.Id.Id;
-        }
         if (_lastSeenEventIds.TryGetValue(updateEvent.Id.ChannelId, out long lastId)) {
-            for (long id = lastId + 1; id < updateEvent.Id.Id; id++) {
-                _missingEventIds.Add(new EventId() {
-                    ChannelId = updateEvent.Id.ChannelId,
-                    Id = id,
-                });
+            if (updateEvent.Id.Id <= lastId) {
+                return;
             }
+            _lastSeenEventIds[updateEvent.Id.ChannelId] = updateEvent.Id.Id;
         } else {
             throw new Exception($"Channel with id {updateEvent.Id.ChannelId} not found");
         }
@@ -66,11 +54,15 @@ public class GameStateService {
         _stateChain.Reset(
             syncEvent.CurrentState, 
             syncEvent.TimeStamp, 
-            syncEvent.Id, 
-            new EventId() { Id = syncEvent.LastSeenEventIds[_ownerChannelId] + 1, ChannelId = _ownerChannelId },
-            _updater);
+            syncEvent.Id,
+            new EventId() { Id = syncEvent.LastSeenEventIds[_ownerChannelId] + 1, ChannelId = _ownerChannelId });
+        foreach (var channel in CHANNELS) {
+            _lastSeenEventIds[channel] = Math.Max(
+                _lastSeenEventIds[channel], 
+                syncEvent.LastSeenEventIds[channel]);
+        }
     }
 
     public GameState GetStateAt(float timestamp) => 
-        _stateChain.CurrentStateAt(timestamp, _updater);
+        _stateChain.CurrentStateAt(timestamp);
 }

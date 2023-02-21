@@ -19,16 +19,18 @@ public class StateChain<T> where T: struct {
     private const int STATE_CHAIN_MAX_LENGTH = 1024;
 
     private readonly ChainLink[] _chain;
+    private readonly IStateUpdate<T> _updater;
     private int _chainRootIndex;
     private int _nextLinkIndex;
 
-    public StateChain(T initialState, float timestamp) {
+    public StateChain(T initialState, float timestamp, IStateUpdate<T> updater) {
         _chain = new ChainLink[STATE_CHAIN_MAX_LENGTH];
         _chain[0] = new() { 
             Id = new EventId(), 
             Timestamp = timestamp, 
             Item = initialState
         };
+        _updater = updater;
         _chainRootIndex = 0;
         _nextLinkIndex = 1;
     }
@@ -40,18 +42,26 @@ public class StateChain<T> where T: struct {
             Item = newState
         };
         _nextLinkIndex = GetSurroundingLinksForTimestamp(link.Timestamp) switch {
-            (null, null) => throw new InvalidDataException("Event chain was invalid"),
             (int prev, null) => AddToEnd(prev, link),
-            (null, int next) => throw new NotImplementedException("TODO: not sure how to handle this yet"),
-            (int prev, int next) => Insert(prev, next, link)
-        };
+            (null, int x) when x == 0 => InsertLateEvent(newState, timestamp, eventId),
+            (int prev, int next) => Insert(prev, next, link),
+            _ => throw new InvalidDataException("Event chain was invalid")
+        }; ;
     }
 
-    public void Reset(T newRoot, float timestamp, EventId eventId, EventId includeEventsFrom, IStateUpdate<T> updater) {
+    public int InsertLateEvent(T newState, float timestamp, EventId eventId) {
+        var root = _chain[_chainRootIndex];
+        var delTime = root.Timestamp - timestamp;
+        _updater.UpdateState(ref newState, in root.Item, delTime);
+        _chain[_chainRootIndex] = root with { Item = newState };
+        return _nextLinkIndex;
+    }
+
+    public void Reset(T newRoot, float timestamp, EventId eventId, EventId includeEventsFrom) {
         foreach (var link in EnumerateLinks()
                 .Where(x => x.Id.ChannelId == includeEventsFrom.ChannelId 
                     && x.Id.Id >= includeEventsFrom.Id)) {
-            updater.UpdateState(ref newRoot, in link.Item, timestamp - link.Timestamp);
+            _updater.UpdateState(ref newRoot, in link.Item, timestamp - link.Timestamp);
         }
         _chain[_chainRootIndex] = new ChainLink() {
             Id = eventId,
@@ -72,7 +82,7 @@ public class StateChain<T> where T: struct {
     public IEnumerable<T> EnumerateStates() =>
         EnumerateLinks().Select(x => x.Item);
 
-    public T CurrentStateAt(float timestamp, IStateUpdate<T> updater) {
+    public T CurrentStateAt(float timestamp) {
         var root = _chain[_chainRootIndex];
         if (timestamp < root.Timestamp) {
             throw new InvalidOperationException("Cannot retrieve state from the past");
@@ -81,10 +91,10 @@ public class StateChain<T> where T: struct {
         var lastTimestamp = root.Timestamp;
         foreach (var state in EnumerateLinks().Skip(1).TakeWhile(x => x.Timestamp <= timestamp)) {
             var delTime = state.Timestamp - lastTimestamp;
-            updater.UpdateState(ref currentState, in state.Item, delTime);
+            _updater.UpdateState(ref currentState, in state.Item, delTime);
             lastTimestamp = state.Timestamp;
         }
-        updater.UpdateState(ref currentState, default, timestamp - lastTimestamp);
+        _updater.UpdateState(ref currentState, default, timestamp - lastTimestamp);
         return currentState;
     }
 
